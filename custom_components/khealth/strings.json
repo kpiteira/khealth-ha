@@ -1,0 +1,30 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to kHealth",
+        "description": "Enter your kHealth server URL and API token.",
+        "data": {
+          "url": "Server URL",
+          "api_token": "API Token"
+        }
+      },
+      "device": {
+        "title": "Select Notification Device",
+        "description": "Choose which device should receive kHealth notifications.",
+        "data": {
+          "notify_device": "Notification Device"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to kHealth server",
+      "invalid_auth": "Invalid API token",
+      "no_devices": "No mobile app notification services found. Install the HA Companion App.",
+      "unknown": "An unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "This kHealth account is already configured"
+    }
+  }
+}

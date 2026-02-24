@@ -1,0 +1,14 @@
+{
+  "domain": "khealth",
+  "name": "kHealth Wellness",
+  "version": "0.1.0",
+  "codeowners": ["@kpiteira"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/kpiteira/khealth-ha",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/kpiteira/khealth-ha/issues",
+  "requirements": [],
+  "single_config_entry": false
+}
