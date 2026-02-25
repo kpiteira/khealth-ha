@@ -8,7 +8,7 @@ from aioresponses import aioresponses
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -212,10 +212,11 @@ async def test_all_entities_have_unique_id_and_device(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,
 ) -> None:
-    """Test all entities have unique_id and belong to the kHealth device."""
+    """Test all 6 entities exist in the registry and share the kHealth Wellness device."""
     await _setup_integration(hass, mock_config_entry)
 
-    registry = er.async_get(hass)
+    ent_reg = er.async_get(hass)
+    dev_reg = dr.async_get(hass)
     prefix = _expected_unique_id_prefix(mock_config_entry)
 
     expected_suffixes = [
@@ -227,13 +228,57 @@ async def test_all_entities_have_unique_id_and_device(
         "reminder_pending",
     ]
 
+    device_ids = set()
     for suffix in expected_suffixes:
-        entity_entry = registry.async_get_entity_id(
-            "sensor" if suffix != "reminder_pending" else "binary_sensor",
-            DOMAIN,
-            f"{prefix}_{suffix}",
-        )
-        assert entity_entry is not None, f"Entity with unique_id {prefix}_{suffix} not found"
+        platform = "binary_sensor" if suffix == "reminder_pending" else "sensor"
+        entity_id = ent_reg.async_get_entity_id(platform, DOMAIN, f"{prefix}_{suffix}")
+        assert entity_id is not None, f"Entity with unique_id {prefix}_{suffix} not found"
+
+        entry = ent_reg.async_get(entity_id)
+        assert entry is not None
+        if entry.device_id:
+            device_ids.add(entry.device_id)
+
+    # All entities belong to the same device
+    assert len(device_ids) == 1, f"Expected 1 device, found {len(device_ids)}"
+
+    # Verify the device name
+    device = dev_reg.async_get(device_ids.pop())
+    assert device is not None
+    assert device.name == "kHealth Wellness"
+    assert device.manufacturer == "kHealth"
+
+
+# --- Data Update ---
+
+
+async def test_sensor_updates_when_coordinator_refreshes(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+) -> None:
+    """Test sensor state updates when coordinator fetches new data."""
+    await _setup_integration(hass, mock_config_entry)
+
+    state = hass.states.get("sensor.khealth_wellness_movement_today")
+    assert state.state == "6/8"
+
+    # Coordinator refreshes with updated data (movement done 6→7)
+    updated_response = {
+        **POLL_RESPONSE,
+        "today": {
+            **POLL_RESPONSE["today"],
+            "movement": {"done": 7, "total": 8},
+        },
+    }
+    coordinator = hass.data[DOMAIN][mock_config_entry.entry_id]["coordinator"]
+    with aioresponses() as mock_api:
+        mock_api.get(POLL_URL, payload=updated_response)
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    state = hass.states.get("sensor.khealth_wellness_movement_today")
+    assert state.state == "7/8"
+    assert state.attributes["done"] == 7
 
 
 # --- Unavailable / Recovery ---
