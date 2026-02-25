@@ -7,6 +7,7 @@ import logging
 import aiohttp
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
 from .const import CONF_API_TOKEN, CONF_NOTIFY_DEVICE, CONF_URL, DOMAIN
@@ -14,6 +15,8 @@ from .coordinator import KhealthCoordinator
 from .notify import KhealthNotificationManager
 
 _LOGGER = logging.getLogger(__name__)
+
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -49,11 +52,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Start notification listeners after successful first refresh
     notify_mgr.start(coordinator)
 
+    # Forward to sensor and binary_sensor platforms
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a kHealth config entry."""
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
     data = hass.data[DOMAIN].pop(entry.entry_id, {})
 
     notify_mgr = data.get("notify_mgr")
@@ -64,4 +72,4 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if session and not session.closed:
         await session.close()
 
-    return True
+    return unload_ok
