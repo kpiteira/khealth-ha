@@ -80,13 +80,12 @@ class KhealthNotificationManager:
             new_id = new_reminder["id"] if new_reminder else None
 
             if new_id is not None and new_id != old_id:
-                # New reminder — send notification
+                # New reminder — send notification (replaces old one via same tag)
                 self._hass.async_create_task(
                     self._send_notification(new_reminder, rtype)
                 )
-
-            if old_id is not None and (new_id is None or new_id != old_id):
-                # Old reminder gone — dismiss
+            elif new_id is None and old_id is not None:
+                # Reminder gone with no replacement — dismiss
                 self._hass.async_create_task(
                     self._dismiss_notification(rtype)
                 )

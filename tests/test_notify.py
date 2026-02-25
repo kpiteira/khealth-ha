@@ -148,6 +148,48 @@ async def test_same_reminder_no_duplicate_notification(
     assert notify_mock.call_count == 0
 
 
+async def test_reminder_id_changes_sends_new_without_dismiss(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+) -> None:
+    """Test: reminder ID change sends new notification without dismissing first.
+
+    When the old reminder expires and a new one fires (same type, different ID),
+    the new notification should replace the old one via the same tag — no separate
+    dismiss that could race and clear the new notification.
+    """
+    notify_mock = AsyncMock()
+    hass.services.async_register("notify", "mobile_app_karls_iphone", notify_mock)
+
+    await _setup_integration(hass, mock_config_entry, POLL_WITH_MOVEMENT)
+    assert notify_mock.call_count == 1
+    notify_mock.reset_mock()
+
+    # New reminder with different ID (old expired, new fired)
+    new_reminder = {**MOVEMENT_REMINDER, "id": 99, "message": "Push-ups x 10"}
+    poll_with_new = {
+        **POLL_NO_REMINDERS,
+        "active_reminders": {"movement": new_reminder, "hydration": None},
+    }
+
+    coordinator = hass.data[DOMAIN][mock_config_entry.entry_id]["coordinator"]
+    with aioresponses() as mock_api:
+        mock_api.get(POLL_URL, payload=poll_with_new)
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    # Should send ONE new notification (no dismiss)
+    assert notify_mock.call_count == 1
+    service_call = notify_mock.call_args[0][0]
+    assert service_call.data["message"] == "Push-ups x 10"
+    # Verify no clear_notification was sent
+    dismiss_calls = [
+        c for c in notify_mock.call_args_list
+        if c[0][0].data.get("message") == "clear_notification"
+    ]
+    assert len(dismiss_calls) == 0
+
+
 # --- Action event handling ---
 
 
