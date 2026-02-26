@@ -320,6 +320,75 @@ async def test_api_error_on_ack_shows_error_notification(
     assert len(error_calls) >= 1
 
 
+# --- Snooze re-fire detection ---
+
+
+async def test_same_id_different_refired_at_triggers_new_notification(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+) -> None:
+    """Test: same reminder ID with different refired_at triggers new notification."""
+    notify_mock = AsyncMock()
+    hass.services.async_register("notify", "mobile_app_karls_iphone", notify_mock)
+
+    await _setup_integration(hass, mock_config_entry, POLL_WITH_MOVEMENT)
+    assert notify_mock.call_count == 1
+    notify_mock.reset_mock()
+
+    # Same reminder ID, but with refired_at set (snooze re-fire)
+    refired_reminder = {
+        **MOVEMENT_REMINDER,
+        "refired_at": "2026-02-23T14:40:00Z",
+    }
+    poll_refired = {
+        **POLL_NO_REMINDERS,
+        "active_reminders": {"movement": refired_reminder, "hydration": None},
+    }
+
+    coordinator = hass.data[DOMAIN][mock_config_entry.entry_id]["coordinator"]
+    with aioresponses() as mock_api:
+        mock_api.get(POLL_URL, payload=poll_refired)
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    # Should send a new notification (re-fired reminder)
+    assert notify_mock.call_count == 1
+    service_data = notify_mock.call_args[0][0].data
+    assert service_data["message"] == "Air squats x 10"
+
+
+async def test_same_id_same_refired_at_no_duplicate(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+) -> None:
+    """Test: same reminder ID with same refired_at does not trigger duplicate."""
+    notify_mock = AsyncMock()
+    hass.services.async_register("notify", "mobile_app_karls_iphone", notify_mock)
+
+    # Start with refired reminder
+    refired_reminder = {
+        **MOVEMENT_REMINDER,
+        "refired_at": "2026-02-23T14:40:00Z",
+    }
+    poll_refired = {
+        **POLL_NO_REMINDERS,
+        "active_reminders": {"movement": refired_reminder, "hydration": None},
+    }
+
+    await _setup_integration(hass, mock_config_entry, poll_refired)
+    assert notify_mock.call_count == 1
+    notify_mock.reset_mock()
+
+    # Same poll data — should NOT send again
+    coordinator = hass.data[DOMAIN][mock_config_entry.entry_id]["coordinator"]
+    with aioresponses() as mock_api:
+        mock_api.get(POLL_URL, payload=poll_refired)
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    assert notify_mock.call_count == 0
+
+
 async def test_listener_cleaned_up_on_unload(
     hass: HomeAssistant,
     mock_config_entry: MockConfigEntry,

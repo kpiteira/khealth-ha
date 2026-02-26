@@ -40,7 +40,7 @@ class KhealthNotificationManager:
         self._api_url = api_url.rstrip("/")
         self._api_token = api_token
         self._session = session
-        self._last_seen: dict[str, int | None] = {}
+        self._last_seen: dict[str, tuple[int, str | None] | None] = {}
         self._unsub_action: Any = None
         self._unsub_coordinator: Any = None
 
@@ -76,21 +76,23 @@ class KhealthNotificationManager:
 
         for rtype in ("movement", "hydration"):
             new_reminder = active.get(rtype)
-            old_id = self._last_seen.get(rtype)
-            new_id = new_reminder["id"] if new_reminder else None
+            old_key = self._last_seen.get(rtype)
+            new_key: tuple[int, str | None] | None = None
+            if new_reminder:
+                new_key = (new_reminder["id"], new_reminder.get("refired_at"))
 
-            if new_id is not None and new_id != old_id:
-                # New reminder — send notification (replaces old one via same tag)
+            if new_key is not None and new_key != old_key:
+                # New or re-fired reminder — send notification (replaces old via same tag)
                 self._hass.async_create_task(
                     self._send_notification(new_reminder, rtype)
                 )
-            elif new_id is None and old_id is not None:
+            elif new_key is None and old_key is not None:
                 # Reminder gone with no replacement — dismiss
                 self._hass.async_create_task(
                     self._dismiss_notification(rtype)
                 )
 
-            self._last_seen[rtype] = new_id
+            self._last_seen[rtype] = new_key
 
     async def _send_notification(self, reminder: dict, rtype: str) -> None:
         """Send an actionable notification via the Companion App."""
@@ -188,6 +190,7 @@ class KhealthNotificationManager:
         # Dismiss the notification on success or 409
         # Find the reminder type from the action (we need to find which tag to clear)
         for rtype in ("movement", "hydration"):
-            if self._last_seen.get(rtype) == reminder_id:
+            key = self._last_seen.get(rtype)
+            if key is not None and key[0] == reminder_id:
                 await self._dismiss_notification(rtype)
                 break
